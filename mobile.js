@@ -13,7 +13,7 @@ class Paper {
   rotation = Math.random() * 30 - 15;
   currentX = 0;
   currentY = 0;
-  rotating = false;
+  animationFrame = null;
 
   init(paper) {
     const isTouchDevice = 'ontouchstart' in window;
@@ -31,52 +31,70 @@ class Paper {
 
     const handleStart = (e) => {
       if (this.holdingPaper) return;
-      this.holdingPaper = true;
 
       const coords = getCoordinates(e);
+      this.holdingPaper = true;
       this.startX = coords.x;
       this.startY = coords.y;
       this.prevX = coords.x;
       this.prevY = coords.y;
 
       paper.style.zIndex = highestZ++;
+      paper.style.willChange = 'transform'; // Enable GPU acceleration
     };
 
     const handleMove = (e) => {
       if (!this.holdingPaper) return;
 
+      e.preventDefault(); // Prevent page scrolling on mobile devices
+
       const coords = getCoordinates(e);
       this.moveX = coords.x;
       this.moveY = coords.y;
 
-      this.velX = this.moveX - this.prevX;
-      this.velY = this.moveY - this.prevY;
-
-      if (!this.rotating) {
-        this.currentX += this.velX;
-        this.currentY += this.velY;
-      }
-
-      const dirX = this.moveX - this.startX;
-      const dirY = this.moveY - this.startY;
-      const dirLength = Math.sqrt(dirX * dirX + dirY * dirY);
-      const angle = Math.atan2(dirY / dirLength, dirX / dirLength);
-      this.rotation = this.rotating ? (180 * angle) / Math.PI : this.rotation;
-
-      paper.style.transform = `translateX(${this.currentX}px) translateY(${this.currentY}px) rotateZ(${this.rotation}deg)`;
+      // Smooth velocity calculation
+      this.velX = (this.moveX - this.prevX) * 0.2 + this.velX * 0.8;
+      this.velY = (this.moveY - this.prevY) * 0.2 + this.velY * 0.8;
 
       this.prevX = this.moveX;
       this.prevY = this.moveY;
+
+      // Trigger rendering loop
+      if (!this.animationFrame) {
+        this.animationFrame = requestAnimationFrame(() => this.updatePosition(paper));
+      }
     };
 
     const handleEnd = () => {
       this.holdingPaper = false;
-      this.rotating = false;
+
+      // Stop rendering loop
+      if (this.animationFrame) {
+        cancelAnimationFrame(this.animationFrame);
+        this.animationFrame = null;
+      }
+
+      paper.style.willChange = 'auto'; // Reset GPU resources
     };
 
     paper.addEventListener(startEvent, handleStart);
-    document.addEventListener(moveEvent, handleMove);
+    document.addEventListener(moveEvent, handleMove, { passive: false });
     document.addEventListener(endEvent, handleEnd);
+  }
+
+  updatePosition(paper) {
+    const scale = window.devicePixelRatio || 1; // Adjust for high-DPR screens
+    this.currentX += this.velX * scale;
+    this.currentY += this.velY * scale;
+
+    paper.style.transform = `translate3d(${this.currentX}px, ${this.currentY}px, 0) rotateZ(${this.rotation}deg)`;
+
+    // Continue rendering while holding the paper
+    if (this.holdingPaper) {
+      this.animationFrame = requestAnimationFrame(() => this.updatePosition(paper));
+    } else {
+      this.animationFrame = null;
+    }
   }
 }
 
